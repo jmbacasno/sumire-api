@@ -1,7 +1,7 @@
 from domain.entities import Task
 from datetime import datetime
 
-from domain.enums import RepeatType
+from domain.constants import WEE
 
 if __name__ == "__main__":
     # Initialize task
