@@ -1,12 +1,14 @@
 from dataclasses import dataclass, field
 from typing import Optional, List, ClassVar
 from datetime import datetime
-from dateutil.relativedelta import weekday, MO
+from dateutil.relativedelta import relativedelta, weekday, MO
 from uuid import UUID, uuid4
 
 from domain.constants import START_WEEKDAY, WEEKDAYS, DAY_NAMES
 from domain.enums import RepeatType, RepeatInterval
-from domain.utils import find_next_due_date
+from domain.utils import find_next_due_date, get_start_date_of_current_week
+
+from typing import Optional, List, Set
 
 @dataclass
 class Step:
