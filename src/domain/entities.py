@@ -179,195 +179,121 @@ class Repeat:
 
 @dataclass
 class Task:
-    title: str = None
-    
-    note: Optional[str] = None
-    steps: List[Step] = field(default_factory=list)
-    due_date: Optional[datetime] = None
+    description: str
+
+    note: str | None = None
+    due_date: datetime | None = None
     is_completed: bool = False
     is_important: bool = False
-    
-    repeat_type: Optional[RepeatType] = None
-    repeat_interval: Optional[RepeatInterval] = None
-    repeat_factor: Optional[int] = None
-    repeat_allowed_days: List[weekday] = field(default_factory=list)
+
+    repeat: Repeat | None = None
 
     # Auto-generated
-    id: UUID = field(default_factory=uuid4)
-    created_at: datetime = field(default_factory=datetime.now)
-    updated_at: datetime = field(default_factory=datetime.now)
+    id: int | None = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
 
+    def __post_init__(self):
+        """Validate at creation"""
+
+        if not self.description and len(self.description.strip()) == 0:
+            raise ValueError(
+                "Title cannot be empty. Task must have a title."
+            )
+
+        # Update due date if repeat is enabled
+        if self.repeat:
+            self.set_repeat(self.repeat)
+
+    def change_description(self, new_description: str):
+        """Change task's description with validation"""
+        if not new_description and len(new_description.strip()) == 0:
+            raise ValueError(
+                "Cannot change description to empty value. Description must contain at least one character."
+            )
+        
+        self.description = new_description
+    
     def is_due(self):
         """Check if the task is due"""
         if not self.due_date:
             return False
         return datetime.now() >= self.due_date
     
-    def set_due_date(self, due_date: Optional[datetime] = None):
+    def set_due_date(self, due_date: datetime | None = None):
         """Set the due date"""
         if due_date is None:
             self.due_date = None
-            self.clear_repeat_config()
+            self.repeat = None
             return
         
         self.due_date = due_date
 
-        if self.repeat_type:
-            self.set_repeat(
-                self.repeat_type,
-                self.repeat_interval,
-                self.repeat_factor,
-                self.repeat_allowed_days
-            )
-    
-    def clear_repeat_config(self):
-        """Clear repeat configurations"""
-        self.repeat_type = None
-        self.repeat_interval = None
-        self.repeat_factor = None
-        self.repeat_allowed_days = None
+        if self.repeat:
+            # Special cases for Week Repeats
+            if self.repeat.interval == RepeatInterval.WEEKS:
+                # WEEKLY - SINGLE DAY
+                if len(self.repeat.allowed_weekdays) == 1:
+                    self.repeat.allowed_weekdays = [self.due_date.weekday()]
+                    print("Set allowed weekdays to: ", self.repeat.allowed_weekdays)
+                
+                else:
+                    # WEEKLY - WEEKDAYS (Monday to Friday)
+                    if self.repeat.allowed_weekdays == WEEKDAYS:
+                        self.due_date = self.repeat.find_next_date(self.due_date)
+                        print("Set due date to: ", self.due_date)
+                    # WEEKLY - MULTIPLE DAYS (Unspecified)
+                    else:
+                        due_date_weekday = self.due_date.weekday()
+                        if due_date_weekday not in self.repeat.allowed_weekdays:
+                            self.repeat.change_allowed_days(
+                                self.repeat.allowed_weekdays | {due_date_weekday}
+                            )
+                            print("Set allowed weekdays to: ", self.repeat.allowed_weekdays)
 
-    def set_repeat_config(self, repeat_interval: RepeatInterval, repeat_factor: int, repeat_allowed_days: List[weekday] = None):
-        """Set repeat configurations"""
-        if repeat_interval:
-            self.repeat_interval = repeat_interval
-        else:
-            raise ValueError("Custom repeat interval cannot be empty for repeats")
-        
-        if repeat_factor:
-            self.repeat_factor = repeat_factor
-        else:
-            raise ValueError("Custom repeat factor cannot be empty for repeats")
-        
-        if repeat_interval == RepeatInterval.WEEKS:
-            if not repeat_allowed_days:
-                raise ValueError("Custom repeat allowed days cannot be empty for weekly repeats")
-            self.repeat_allowed_days = repeat_allowed_days
-        else:
-            self.repeat_allowed_days = None
-    
-    def set_repeat(
-        self,
-        repeat_type: RepeatType,
-        repeat_interval: Optional[RepeatInterval] = None,
-        repeat_factor: Optional[int] = None,
-        repeat_allowed_days: Optional[List[int]] = None
-    ):
-        """Set repeat"""
+    def set_repeat(self, repeat: Repeat | None = None):
+        self.repeat = repeat
 
-        # Set due date to current date if not set
         if not self.due_date:
             self.due_date = datetime.now()
+            print("Set due date to: ", self.due_date)
 
-        self.repeat_type = repeat_type
-        
-        match self.repeat_type:
-            case RepeatType.DAILY:
-                self.set_repeat_config(RepeatInterval.DAYS, 1)
-            
-            case RepeatType.WEEKDAYS:
-                self.set_repeat_config(RepeatInterval.WEEKS, 1, WEEKDAYS)
-
-                # Set due date to a Monday if due date is not a weekday
-                if self.due_date.weekday() not in WEEKDAYS:
-                    self.due_date = find_next_due_date(
-                        self.due_date, RepeatInterval.WEEKS,
-                        1,
-                        [MO],
-                        start_weekday=START_WEEKDAY
-                    )
-            
-            case RepeatType.WEEKLY:
-                current_weekday = weekday(self.due_date.weekday())
-                self.set_repeat_config(RepeatInterval.WEEKS, 1, [current_weekday])
-            
-            case RepeatType.MONTHLY:
-                self.set_repeat_config(RepeatInterval.MONTHS, 1)
-            
-            case RepeatType.YEARLY:
-                self.set_repeat_config(RepeatInterval.YEARS, 1)
-            
-            case RepeatType.CUSTOM:
-                self.set_repeat_config(repeat_interval, repeat_factor, repeat_allowed_days)
+        if self.repeat:
+            # Special cases for Week Repeats
+            if self.repeat.interval == RepeatInterval.WEEKS:
+                if self.due_date.weekday() in self.repeat.allowed_weekdays:
+                    return
+                
+                # Get Repeat where factor is 1
+                repeat = Repeat(
+                    interval=self.repeat.interval,
+                    factor=1,
+                    allowed_weekdays=self.repeat.allowed_weekdays
+                )
+                self.due_date = repeat.find_next_date(self.due_date)
+                print("Set due date to: ", self.due_date)
     
     def complete(self):
         """Mark task as completed"""
         self.is_completed = True
         new_repeating_task = None
 
-        # Create duplicate recurring task if repeat is enabled
-        if self.repeat_type:
-            next_due_date = find_next_due_date(
-                self.due_date,
-                self.repeat_interval,
-                self.repeat_factor,
-                self.repeat_allowed_days,
-            )
-
+        # Create duplicate task if repeat is enabled
+        if self.repeat:
             new_repeating_task = Task(
-                title=self.title,
+                description=self.description,
                 note=self.note,
-                due_date=next_due_date,
+                due_date=self.repeat.find_next_date(self.due_date),
                 is_completed=False,
                 is_important=self.is_important,
-                repeat_type=self.repeat_type,
-                repeat_interval=self.repeat_interval,
-                repeat_factor=self.repeat_factor,
-                repeat_allowed_days=self.repeat_allowed_days
+                repeat=self.repeat
             )
         
-        self.clear_repeat_config()
+        self.repeat = None
         return new_repeating_task
-    
-    def uncomplete(self):
-        """Mark task as uncompleted"""
-        self.is_completed = False
-    
-    def get_repeat_description(self):
-        """Get repeat description"""
-        if not self.repeat_type:
-            return None
-        
-        match self.repeat_interval:
-            case RepeatInterval.DAYS:
-                if self.repeat_factor == 1:
-                    return "Daily"
-                else:
-                    return f"Every {self.repeat_factor} days"
-            
-            case RepeatInterval.WEEKS:
-                interval_description = (
-                    "Weekly"
-                    if self.repeat_factor == 1
-                    else f"Every {self.repeat_factor} weeks"
-                )
-                days_description = (
-                    "Weekdays"
-                    if self.repeat_allowed_days == WEEKDAYS
-                    else ", ".join([DAY_NAMES[weekday.weekday] for weekday in self.repeat_allowed_days])
-                )
-                return f"{interval_description} on {days_description}"
-            
-            case RepeatInterval.MONTHS:
-                if self.repeat_factor == 1:
-                    return "Monthly"
-                else:
-                    return f"Every {self.repeat_factor} months"
-            
-            case RepeatInterval.YEARS:
-                if self.repeat_factor == 1:
-                    return "Yearly"
-                else:
-                    return f"Every {self.repeat_factor} years"
-    
-    def add_step(self, step: Step):
-        """Add step to task"""
-        self.steps.append(step)
 
-    def remove_step(self, step_id: UUID):
-        """Remove step from task"""
-        pass
-
-    def update_step(self, step_id: UUID, step_data: dict):
-        """Update step in task"""
-        pass
+    def __str__(self):
+        if self.due_date:
+            return f"{self.description} (Due: {self.due_date.strftime('%Y-%m-%d')})"
+        else:
+            return self.description
