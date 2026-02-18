@@ -12,16 +12,35 @@ from typing import Optional, List, Set
 
 @dataclass
 class Step:
-    title: str
+    description: str
 
     # Auto-generated
-    id: UUID = field(default_factory=uuid4)
-    created_at: datetime = field(default_factory=datetime.now)
-    updated_at: datetime = field(default_factory=datetime.now)
+    id: int | None = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+
+    def __post_init__(self):
+        """Validate at creation"""
+
+        if not self.description and len(self.description.strip()) == 0:
+            raise ValueError(
+                "Description cannot be empty. Step must have a description."
+            )
+
+    def change_description(self, new_description: str):
+        """Change step's description with validation"""
+        if not new_description and len(new_description.strip()) == 0:
+            raise ValueError(
+                "Cannot change description to empty value. Description must contain at least one character."
+            )
+        self.description = new_description
 
     def convert_to_task(self):
         """Convert step to task"""
-        return Task(title=self.title)
+        return Task(description=self.description)
+    
+    def __str__(self):
+        return self.description
 
 @dataclass
 class Task:
