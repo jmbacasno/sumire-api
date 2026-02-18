@@ -43,6 +43,141 @@ class Step:
         return self.description
 
 @dataclass
+class Repeat:
+    interval: RepeatInterval
+    factor: int
+    allowed_weekdays: Set[int] | None = None
+
+    def __post_init__(self):
+        """Validate at creation"""
+
+        if self.interval is None:
+            raise ValueError(
+                "Type cannot be empty. Repeat must have a type."
+            )
+
+        if self.factor is None:
+            raise ValueError(
+                "Factor cannot be empty. Repeat must have a factor."
+            )
+
+        if self.factor < 1:
+            raise ValueError(
+                "Factor cannot be less than 1."
+            )
+
+        if self.interval == RepeatInterval.WEEKS and not self.allowed_weekdays:
+            raise ValueError(
+                "Allowed weekdays cannot be empty for weekly repeats."
+            )
+
+    def change_interval(self, new_interval: RepeatInterval):
+        """Change repeat's interval with validation"""
+        if new_interval is None:
+            raise ValueError(
+                "Cannot change interval to empty value."
+            )
+        self.interval = new_interval
+
+    def change_factor(self, new_factor: int):
+        """Change repeat's factor with validation"""
+        if new_factor is None:
+            raise ValueError(
+                "Cannot change factor to empty value."
+            )
+
+        if new_factor < 1:
+            raise ValueError(
+                "Cannot change factor to less than 1."
+            )
+
+        self.factor = new_factor
+
+    def change_allowed_days(self, new_allowed_weekdays: List[int]):
+        """Change repeat's allowed days with validation"""
+        if self.interval == RepeatInterval.WEEKS and not new_allowed_weekdays:
+            raise ValueError(
+                "Cannot change allowed weekdays to empty value for weekly repeats."
+            )
+        
+        self.allowed_weekdays = new_allowed_weekdays
+
+    def find_next_date(
+        self,
+        reference_date: datetime,
+        start_weekday: weekday=START_WEEKDAY
+    ) -> datetime:
+        """Find the next due date based on repeat configurations"""
+        match self.interval:
+            case RepeatInterval.DAYS:
+                return reference_date + relativedelta(days=self.factor)
+
+            case RepeatInterval.MONTHS:
+                return reference_date + relativedelta(months=self.factor)
+
+            case RepeatInterval.YEARS:
+                return reference_date + relativedelta(years=self.factor)
+
+            case RepeatInterval.WEEKS:
+                start_date_of_current_week = get_start_date_of_current_week(reference_date, start_weekday=start_weekday)
+                last_date_of_current_week = start_date_of_current_week + relativedelta(days=6)
+
+                # Scan current week
+                for days in range(1, 6 + 1):
+                    date_of_current_week = start_date_of_current_week + relativedelta(days=days)
+                    if (date_of_current_week.weekday() in self.allowed_weekdays
+                            and date_of_current_week > reference_date
+                            and date_of_current_week <= last_date_of_current_week):
+                        return date_of_current_week
+
+                start_date_of_next_week = start_date_of_current_week + relativedelta(weeks=self.factor)
+                last_date_of_next_week = start_date_of_next_week + relativedelta(days=6)
+
+                # Scan next week
+                for days in range(1, 6 + 1):
+                    date_of_next_week = start_date_of_next_week + relativedelta(days=days)
+                    if (date_of_next_week.weekday() in self.allowed_weekdays
+                            and date_of_next_week > reference_date
+                            and date_of_next_week <= last_date_of_next_week):
+                        return date_of_next_week
+
+            case _:
+                return None
+
+    def __str__(self):
+        match self.interval:
+            case RepeatInterval.DAYS:
+                if self.factor == 1:
+                    return "Daily"
+                else:
+                    return f"Every {self.factor} days"
+
+            case RepeatInterval.WEEKS:
+                interval_description = (
+                    "Weekly"
+                    if self.factor == 1
+                    else f"Every {self.factor} weeks"
+                )
+                weekdays_description = (
+                    "Weekdays"
+                    if self.allowed_weekdays == WEEKDAYS
+                    else ", ".join([DAY_NAMES[weekday] for weekday in self.allowed_weekdays])
+                )
+                return f"{interval_description} on {weekdays_description}"
+
+            case RepeatInterval.MONTHS:
+                if self.factor == 1:
+                    return "Monthly"
+                else:
+                    return f"Every {self.factor} months"
+
+            case RepeatInterval.YEARS:
+                if self.factor == 1:
+                    return "Yearly"
+                else:
+                    return f"Every {self.factor} years"
+
+@dataclass
 class Task:
     title: str = None
     
