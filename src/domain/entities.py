@@ -1,187 +1,178 @@
-from dataclasses import dataclass, field
-from typing import Optional, List, ClassVar
+from dataclasses import dataclass
+from typing import Set
 from datetime import datetime
-from dateutil.relativedelta import relativedelta, weekday, MO
-from uuid import UUID, uuid4
+import calendar
 
-from domain.constants import START_WEEKDAY, WEEKDAYS, DAY_NAMES
-from domain.enums import RepeatType, RepeatInterval
-from domain.utils import find_next_due_date, get_start_date_of_current_week
+from dateutil.rrule import rrule
 
-from typing import Optional, List, Set
+from domain.constants import START_NWEEKDAY, WEEKDAY_NWEEKDAYS, WEEKEND_NWEEKDAYS
+from domain.enums import RepeatFrequency
+from domain.exceptions import (
+    InvalidEntityStateException,
+    BusinessRuleViolationException
+)
 
 @dataclass
 class Step:
-    description: str
+    title: str
 
-    # Auto-generated
     id: int | None = None
+    task_id: int | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
 
     def __post_init__(self):
         """Validate at creation"""
 
-        if not self.description and len(self.description.strip()) == 0:
-            raise ValueError(
-                "Description cannot be empty. Step must have a description."
+        if self.task_id is None:
+            raise InvalidEntityStateException(
+                "Task ID cannot be empty. Step must refer to a task."
             )
 
-    def change_description(self, new_description: str):
-        """Change step's description with validation"""
-        if not new_description and len(new_description.strip()) == 0:
-            raise ValueError(
-                "Cannot change description to empty value. Description must contain at least one character."
+        if not self.title and len(self.title.strip()) == 0:
+            raise InvalidEntityStateException(
+                "Title cannot be empty. Step must have a title."
             )
-        self.description = new_description
+
+    def change_title(self, new_title: str | None):
+        """Change Step title with validation"""
+        if not new_title and len(new_title.strip()) == 0:
+            raise BusinessRuleViolationException(
+                "Cannot change title to empty. Title must contain at least one character."
+            )
+        self.title = new_title
 
     def convert_to_task(self):
-        """Convert step to task"""
-        return Task(description=self.description)
-    
+        """Convert Step to Task"""
+        return Task(title=self.title)
+
     def __str__(self):
-        return self.description
+        return self.title
 
 @dataclass
 class Repeat:
-    interval: RepeatInterval
-    factor: int
+    frequency: RepeatFrequency
+    interval: int
     allowed_weekdays: Set[int] | None = None
+
+    id: int | None = None
+    task_id: int | None = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
 
     def __post_init__(self):
         """Validate at creation"""
 
+        if self.task_id is None:
+            raise InvalidEntityStateException(
+                "Task ID cannot be empty. Repeat must refer to a task."
+            )
+
+        if self.frequency is None:
+            raise InvalidEntityStateException(
+                "Frequency cannot be empty. Repeat must have a frequency."
+            )
+
         if self.interval is None:
-            raise ValueError(
-                "Type cannot be empty. Repeat must have a type."
+            raise InvalidEntityStateException(
+                "Interval cannot be empty. Repeat must have an interval."
             )
 
-        if self.factor is None:
-            raise ValueError(
-                "Factor cannot be empty. Repeat must have a factor."
+        if self.interval < 1:
+            raise InvalidEntityStateException(
+                "Interval cannot be less than 1."
             )
 
-        if self.factor < 1:
-            raise ValueError(
-                "Factor cannot be less than 1."
+        if self.frequency == RepeatFrequency.WEEKLY and not self.allowed_weekdays:
+            raise InvalidEntityStateException(
+                "Allowed weekdays cannot be empty for Weekly Repeats."
             )
 
-        if self.interval == RepeatInterval.WEEKS and not self.allowed_weekdays:
-            raise ValueError(
-                "Allowed weekdays cannot be empty for weekly repeats."
+    def change_configurations(self,
+        new_frequency: RepeatFrequency | None,
+        new_interval: int | None,
+        new_allowed_weekdays: Set[int] | None
+    ):
+        """Change Repeat frequency with validation"""
+        if new_frequency is None:
+            raise BusinessRuleViolationException(
+                "Cannot change frequency to empty."
             )
+        self.frequency = new_frequency
 
-    def change_interval(self, new_interval: RepeatInterval):
-        """Change repeat's interval with validation"""
+        """Change Repeat interval with validation"""
         if new_interval is None:
-            raise ValueError(
-                "Cannot change interval to empty value."
-            )
-        self.interval = new_interval
-
-    def change_factor(self, new_factor: int):
-        """Change repeat's factor with validation"""
-        if new_factor is None:
-            raise ValueError(
-                "Cannot change factor to empty value."
+            raise BusinessRuleViolationException(
+                "Cannot change interval to empty."
             )
 
-        if new_factor < 1:
-            raise ValueError(
-                "Cannot change factor to less than 1."
+        if new_interval < 1:
+            raise BusinessRuleViolationException(
+                "Cannot change interval to less than 1."
             )
 
-        self.factor = new_factor
+        if self.frequency == RepeatFrequency.WEEKLY:
+            """Change Repeat interval with validation"""
+            if not new_allowed_weekdays:
+                raise BusinessRuleViolationException(
+                    "Cannot change allowed weekdays to empty for Weekly Repeats."
+                )
+            self.allowed_weekdays = new_allowed_weekdays
+        else:
+            # Reset allowed weekdays
+            self.allowed_weekdays = None
 
-    def change_allowed_days(self, new_allowed_weekdays: List[int]):
-        """Change repeat's allowed days with validation"""
-        if self.interval == RepeatInterval.WEEKS and not new_allowed_weekdays:
-            raise ValueError(
-                "Cannot change allowed weekdays to empty value for weekly repeats."
-            )
-        
-        self.allowed_weekdays = new_allowed_weekdays
-
-    def find_next_date(
-        self,
-        reference_date: datetime,
-        start_weekday: weekday=START_WEEKDAY
-    ) -> datetime:
+    def find_next_date(self, reference_date: datetime) -> datetime:
         """Find the next due date based on repeat configurations"""
-        match self.interval:
-            case RepeatInterval.DAYS:
-                return reference_date + relativedelta(days=self.factor)
-
-            case RepeatInterval.MONTHS:
-                return reference_date + relativedelta(months=self.factor)
-
-            case RepeatInterval.YEARS:
-                return reference_date + relativedelta(years=self.factor)
-
-            case RepeatInterval.WEEKS:
-                start_date_of_current_week = get_start_date_of_current_week(reference_date, start_weekday=start_weekday)
-                last_date_of_current_week = start_date_of_current_week + relativedelta(days=6)
-
-                # Scan current week
-                for days in range(1, 6 + 1):
-                    date_of_current_week = start_date_of_current_week + relativedelta(days=days)
-                    if (date_of_current_week.weekday() in self.allowed_weekdays
-                            and date_of_current_week > reference_date
-                            and date_of_current_week <= last_date_of_current_week):
-                        return date_of_current_week
-
-                start_date_of_next_week = start_date_of_current_week + relativedelta(weeks=self.factor)
-                last_date_of_next_week = start_date_of_next_week + relativedelta(days=6)
-
-                # Scan next week
-                for days in range(1, 6 + 1):
-                    date_of_next_week = start_date_of_next_week + relativedelta(days=days)
-                    if (date_of_next_week.weekday() in self.allowed_weekdays
-                            and date_of_next_week > reference_date
-                            and date_of_next_week <= last_date_of_next_week):
-                        return date_of_next_week
-
-            case _:
-                return None
+        repeat_rrule = rrule(
+            dtstart=reference_date,
+            freq=self.frequency,
+            interval=self.interval,
+            byweekday=self.allowed_weekdays,
+            wkst=START_NWEEKDAY,
+        )
+        next_date = repeat_rrule.after(reference_date)
+        return next_date
 
     def __str__(self):
-        match self.interval:
-            case RepeatInterval.DAYS:
-                if self.factor == 1:
-                    return "Daily"
+        match self.frequency:
+            case RepeatFrequency.YEARLY:
+                if self.interval == 1:
+                    return "Repeat yearly"
                 else:
-                    return f"Every {self.factor} days"
+                    return f"Repeat every {self.interval} years"
+                
+            case RepeatFrequency.MONTHLY:
+                if self.interval == 1:
+                    return "Repeat monthly"
+                else:
+                    return f"Repeat every {self.interval} months"
 
-            case RepeatInterval.WEEKS:
-                interval_description = (
-                    "Weekly"
-                    if self.factor == 1
-                    else f"Every {self.factor} weeks"
+            case RepeatFrequency.WEEKLY:
+                frequency_description = (
+                    "Repeat weekly"
+                    if self.interval == 1
+                    else f"Repeat every {self.interval} weeks"
                 )
-                elif self.allowed_weekdays == WEE
-                weekdays_description = (
-                    "Weekdays"
-                    if self.allowed_weekdays == WEEKDAYS
-                    else ", ".join([DAY_NAMES[weekday] for weekday in self.allowed_weekdays])
-                )
-                return f"{interval_description} on {weekdays_description}"
 
-            case RepeatInterval.MONTHS:
-                if self.factor == 1:
-                    return "Monthly"
+                if self.allowed_weekdays == WEEKDAY_NWEEKDAYS:
+                    weekdays_description = "weekdays"
+                elif self.allowed_weekdays == WEEKEND_NWEEKDAYS:
+                    weekdays_description = "weekends"
                 else:
-                    return f"Every {self.factor} months"
+                    weekdays_description = ", ".join(calendar.day_abbr[n] for n in self.allowed_weekdays)
+                
+                return f"{frequency_description} on {weekdays_description}"
 
-            case RepeatInterval.YEARS:
-                if self.factor == 1:
-                    return "Yearly"
+            case RepeatFrequency.DAILY:
+                if self.interval == 1:
+                    return "Repeat daily"
                 else:
-                    return f"Every {self.factor} years"
+                    return f"Repeat every {self.interval} days"
 
 @dataclass
 class Task:
-    description: str
-
+    title: str
     note: str | None = None
     due_date: datetime | None = None
     is_completed: bool = False
@@ -189,112 +180,84 @@ class Task:
 
     repeat: Repeat | None = None
 
-    # Auto-generated
     id: int | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         """Validate at creation"""
 
-        if not self.description and len(self.description.strip()) == 0:
-            raise ValueError(
+        if not self.title and len(self.title.strip()) == 0:
+            raise InvalidEntityStateException(
                 "Title cannot be empty. Task must have a title."
             )
 
-        # Update due date if repeat is enabled
         if self.repeat:
-            self.set_repeat(self.repeat)
+            if not self.due_date:
+                raise InvalidEntityStateException(
+                    "Task with repeat must have a due date."
+                )
+            # Special case for Weekly Repeats
+            else:
+                if (
+                    self.repeat.frequency == RepeatFrequency.WEEKLY
+                    and self.due_date.weekday() not in self.repeat.allowed_weekdays
+                ):
+                    raise InvalidEntityStateException(
+                        "Due date must be on one of the allowed weekdays for Weekly Repeats."
+                    )
 
-    def change_description(self, new_description: str):
-        """Change task's description with validation"""
-        if not new_description and len(new_description.strip()) == 0:
+    def change_title(self, new_title: str | None) -> None:
+        """Change Task's title with validation"""
+        if not new_title and len(new_title.strip()) == 0:
             raise ValueError(
-                "Cannot change description to empty value. Description must contain at least one character."
+                "Cannot change title to empty value. Title must contain at least one character."
             )
-        
-        self.description = new_description
-    
-    def is_due(self):
+
+        self.title = new_title
+
+    def change_due_date_and_repeat(self, new_due_date: datetime | None, new_repeat: Repeat | None) -> None:
+        """Change Task's due date with validation"""
+        if new_repeat:
+            if not new_due_date:
+                raise BusinessRuleViolationException(
+                    "Task with repeat must have a due date."
+                )
+            # Special case for Weekly Repeats
+            else:
+                if (
+                    new_repeat == RepeatFrequency.WEEKLY
+                    and new_due_date.weekday() not in new_repeat.allowed_weekdays
+                ):
+                    raise BusinessRuleViolationException(
+                        "Due date must be on one of the allowed weekdays for Weekly Repeats."
+                    )
+
+        self.due_date = new_due_date
+        self.repeat = new_repeat
+
+    def is_due(self) -> bool:
         """Check if the task is due"""
         if not self.due_date:
             return False
         return datetime.now() >= self.due_date
-    
-    def set_due_date(self, due_date: datetime | None = None):
-        """Set the due date"""
-        if due_date is None:
-            self.due_date = None
-            self.repeat = None
-            return
-        
-        self.due_date = due_date
 
+    def create_new_repeating_task(self) -> Task | None:
+        """Create a new repeating task with new due date"""
         if self.repeat:
-            # Special cases for Week Repeats
-            if self.repeat.interval == RepeatInterval.WEEKS:
-                # WEEKLY - SINGLE DAY
-                if len(self.repeat.allowed_weekdays) == 1:
-                    self.repeat.allowed_weekdays = [self.due_date.weekday()]
-                    print("Set allowed weekdays to: ", self.repeat.allowed_weekdays)
-                
-                else:
-                    # WEEKLY - WEEKDAYS (Monday to Friday)
-                    if self.repeat.allowed_weekdays == WEEKDAYS:
-                        self.due_date = self.repeat.find_next_date(self.due_date)
-                        print("Set due date to: ", self.due_date)
-                    # WEEKLY - MULTIPLE DAYS (Unspecified)
-                    else:
-                        due_date_weekday = self.due_date.weekday()
-                        if due_date_weekday not in self.repeat.allowed_weekdays:
-                            self.repeat.change_allowed_days(
-                                self.repeat.allowed_weekdays | {due_date_weekday}
-                            )
-                            print("Set allowed weekdays to: ", self.repeat.allowed_weekdays)
-
-    def set_repeat(self, repeat: Repeat | None = None):
-        self.repeat = repeat
-
-        if not self.due_date:
-            self.due_date = datetime.now()
-            print("Set due date to: ", self.due_date)
-
-        if self.repeat:
-            # Special cases for Week Repeats
-            if self.repeat.interval == RepeatInterval.WEEKS:
-                if self.due_date.weekday() in self.repeat.allowed_weekdays:
-                    return
-                
-                # Get Repeat where factor is 1
-                repeat = Repeat(
-                    interval=self.repeat.interval,
-                    factor=1,
-                    allowed_weekdays=self.repeat.allowed_weekdays
-                )
-                self.due_date = repeat.find_next_date(self.due_date)
-                print("Set due date to: ", self.due_date)
-    
-    def complete(self):
-        """Mark task as completed"""
-        self.is_completed = True
-        new_repeating_task = None
-
-        # Create duplicate task if repeat is enabled
-        if self.repeat:
-            new_repeating_task = Task(
-                description=self.description,
+            return Task(
+                title=self.title,
                 note=self.note,
                 due_date=self.repeat.find_next_date(self.due_date),
                 is_completed=False,
                 is_important=self.is_important,
                 repeat=self.repeat
             )
-        
-        self.repeat = None
-        return new_repeating_task
+        else:
+            return None
 
     def __str__(self):
         if self.due_date:
-            return f"{self.description} (Due: {self.due_date.strftime('%Y-%m-%d')})"
+            return f"{self.title} | due on {self.due_date.strftime('%Y-%m-%d')}"
         else:
-            return self.description
+            return self.title
