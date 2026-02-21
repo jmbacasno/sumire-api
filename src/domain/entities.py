@@ -158,6 +158,7 @@ class Repeat:
                     if self.factor == 1
                     else f"Every {self.factor} weeks"
                 )
+                elif self.allowed_weekdays == WEE
                 weekdays_description = (
                     "Weekdays"
                     if self.allowed_weekdays == WEEKDAYS
