@@ -1,6 +1,5 @@
-from dateutil.relativedelta import relativedelta, weekday, MO, TU, WE, TH, FR, SA, SU
-from typing import List
+from typing import Set
 
-START_WEEKDAY: weekday = SU
-WEEKDAYS: List[weekday] = [MO, TU, WE, TH, FR]
-DAY_NAMES: List[str] = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+START_NWEEKDAY: int = 6 # Sunday
+WEEKDAY_NWEEKDAYS: Set[int] = {0, 1, 2, 3, 4} # Monday to Friday
+WEEKEND_NWEEKDAYS: Set[int] = {5, 6} # Saturday and Sunday
