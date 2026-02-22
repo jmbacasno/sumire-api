@@ -5,7 +5,7 @@ import calendar
 
 from dateutil.rrule import rrule
 
-from domain.constants import START_NWEEKDAY, WEEKDAY_NWEEKDAYS, WEEKEND_NWEEKDAYS
+from domain.constants import START_WEEKDAY, WEEKDAY_WEEKDAYS, WEEKEND_WEEKDAYS
 from domain.enums import RepeatFrequency
 from domain.exceptions import (
     InvalidEntityStateException,
@@ -123,7 +123,7 @@ class Repeat:
             freq=self.frequency,
             interval=self.interval,
             byweekday=self.allowed_weekdays,
-            wkst=START_NWEEKDAY,
+            wkst=START_WEEKDAY,
         )
         next_date = repeat_rrule.after(reference_date)
         return next_date
@@ -164,9 +164,9 @@ class Repeat:
                     else f"Repeat every {self.interval} weeks"
                 )
 
-                if self.allowed_weekdays == WEEKDAY_NWEEKDAYS:
+                if self.allowed_weekdays == WEEKDAY_WEEKDAYS:
                     weekdays_description = "weekdays"
-                elif self.allowed_weekdays == WEEKEND_NWEEKDAYS:
+                elif self.allowed_weekdays == WEEKEND_WEEKDAYS:
                     weekdays_description = "weekends"
                 else:
                     weekdays_description = ", ".join(calendar.day_abbr[n] for n in self.allowed_weekdays)
