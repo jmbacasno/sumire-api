@@ -55,18 +55,8 @@ class Repeat:
     interval: int
     allowed_weekdays: Set[int] | None = None
 
-    id: int | None = None
-    task_id: int | None = None
-    created_at: datetime | None = None
-    updated_at: datetime | None = None
-
     def __post_init__(self):
         """Validate at creation"""
-
-        if self.task_id is None:
-            raise InvalidEntityStateException(
-                "Task ID cannot be empty. Repeat must refer to a task."
-            )
 
         if self.frequency is None:
             raise InvalidEntityStateException(
@@ -87,6 +77,10 @@ class Repeat:
             raise InvalidEntityStateException(
                 "Allowed weekdays cannot be empty for Weekly Repeats."
             )
+        
+        if self.frequency != RepeatFrequency.WEEKLY:
+            # Reset allowed weekdays
+            self.allowed_weekdays = None
 
     def change_configurations(self,
         new_frequency: RepeatFrequency | None,
@@ -133,6 +127,21 @@ class Repeat:
         )
         next_date = repeat_rrule.after(reference_date)
         return next_date
+
+    @classmethod
+    def create_new(
+        cls,
+        frequency: RepeatFrequency | None = None,
+        interval: int | None = None,
+        allowed_weekdays: Set[int] | None = None
+    ) -> Repeat | None:
+        if not frequency and not interval and not allowed_weekdays:
+            return None
+        return Repeat(
+            frequency=frequency,
+            interval=interval,
+            allowed_weekdays=allowed_weekdays
+        )
 
     def __str__(self):
         match self.frequency:
