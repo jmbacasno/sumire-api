@@ -1,16 +1,16 @@
 from datetime import datetime
 
-from sqlalchemy import String, Text, Boolean, ForeignKey, text
+from sqlalchemy import String, Text, Integer, Boolean, ForeignKey, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from domain.entities import Task, Repeat, Step
-from domain.enums import RepeatFrequency
+from domain.utils import num_to_frequency, str_weekdays_to_set_weekdays, set_weekdays_to_str_weekdays
 from infrastructure.persistence.database import Base
 
 class StepModel(Base):
     __tablename__ = "steps"
 
-    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     task_id: Mapped[int] = mapped_column(ForeignKey("tasks.id"), nullable=False)
 
     title: Mapped[str] = mapped_column(Text, nullable=False)
@@ -40,10 +40,11 @@ class StepModel(Base):
             updated_at=step.updated_at
         )
 
+"""
 class RepeatModel(Base):
     __tablename__ = "repeats"
 
-    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     task_id: Mapped[int] = mapped_column(ForeignKey("tasks.id"), nullable=False)
 
     frequency: Mapped[int] = mapped_column(nullable=False)
@@ -84,11 +85,12 @@ class RepeatModel(Base):
             created_at=repeat.created_at,
             updated_at=repeat.updated_at
         )
+"""
 
 class TaskModel(Base):
     __tablename__ = "tasks"
 
-    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
 
     title: Mapped[str] = mapped_column(Text, nullable=False)
     note: Mapped[str] = mapped_column(Text, nullable=True)
@@ -96,16 +98,27 @@ class TaskModel(Base):
     is_completed: Mapped[bool] = mapped_column(nullable=False, server_default=text("0"))
     is_important: Mapped[bool] = mapped_column(nullable=False, server_default=text("0"))
 
+    repeat_frequency: Mapped[int] = mapped_column(nullable=True)
+    repeat_interval: Mapped[int] = mapped_column(nullable=True)
+    repeat_allowed_weekdays: Mapped[str] = mapped_column(String(7), nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(nullable=False, default=datetime.now())
-    updated_at: Mapped[datetime] = mapped_column(nullable=False, default=datetime.now(), onupdate=datetime.now())
+    updated_at: Mapped[datetime] = mapped_column(nullable=False, default=datetime.now())
 
     def to_entity(self) -> Task:
+        repeat = Repeat.create_new(
+            frequency=num_to_frequency(self.repeat_frequency),
+            interval=self.repeat_interval,
+            allowed_weekdays=str_weekdays_to_set_weekdays(self.repeat_allowed_weekdays)
+        )
         return Task(
             title=self.title,
             note=self.note,
             due_date=self.due_date,
             is_completed=self.is_completed,
             is_important=self.is_important,
+
+            repeat=repeat,
 
             id=self.id,
             created_at=self.created_at,
@@ -114,6 +127,15 @@ class TaskModel(Base):
 
     @staticmethod
     def from_entity(task: Task) -> TaskModel:
+        if task.repeat:
+            frequency = task.repeat.frequency.value
+            interval = task.repeat.interval
+            allowed_weekdays = set_weekdays_to_str_weekdays(task.repeat.allowed_weekdays)
+        else:
+            frequency = None
+            interval = None
+            allowed_weekdays = None
+
         return TaskModel(
             id=task.id,
 
@@ -122,6 +144,10 @@ class TaskModel(Base):
             due_date=task.due_date,
             is_completed=task.is_completed,
             is_important=task.is_important,
+
+            repeat_frequency=frequency,
+            repeat_interval=interval,
+            repeat_allowed_weekdays=allowed_weekdays,
 
             created_at=task.created_at,
             updated_at=task.updated_at
