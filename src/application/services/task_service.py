@@ -2,10 +2,7 @@ from collections.abc import Callable
 from typing import List, Tuple
 
 from application.dtos.task_dto import CreateTaskDTO, UpdateTaskDTO, TaskDTO
-from domain.entities import Task, Repeat
-from domain.enums import RepeatFrequency
-from domain.utils import num_to_frequency, str_weekdays_to_set_weekdays, set_weekdays_to_str_weekdays
-
+from domain.entities import Task
 
 class TaskService:
     def __init__(self, uow_factory) -> None:
@@ -15,18 +12,14 @@ class TaskService:
         """Create a new task."""
         async with self._uow_factory as uow:
             # Create domain entity
-            repeat = Repeat.create_new(
-                frequency=num_to_frequency(create_task_dto.repeat_frequency),
-                interval=create_task_dto.repeat_interval,
-                allowed_weekdays=str_weekdays_to_set_weekdays(create_task_dto.repeat_allowed_weekdays)
-            )
             task = Task(
-                title=create_task_dto.title,
+                description=create_task_dto.description,
                 note=create_task_dto.note,
                 due_date=create_task_dto.due_date,
-                #is_completed=create_task_dto.is_completed,
                 is_important=create_task_dto.is_important,
-                repeat=repeat
+                repeat_frequency=create_task_dto.repeat_frequency,
+                repeat_interval=create_task_dto.repeat_interval,
+                repeat_allowed_weekdays=create_task_dto.repeat_allowed_weekdays
             )
 
             # Persist via repository
@@ -63,21 +56,20 @@ class TaskService:
             if task is None:
                 raise ValueError(f"Task with id {task_id} not found.")
 
-            # Update validated fields by domain entity method
-            if update_task_dto.title:
-                task.change_title(update_task_dto.title)
-            
+            # Update validated fields by method
+            if update_task_dto.description:
+                task.change_description(update_task_dto.description)
+
+            task.change_due_date_and_repeat(
+                update_task_dto.due_date,
+                update_task_dto.repeat_frequency,
+                update_task_dto.repeat_interval,
+                update_task_dto.repeat_allowed_weekdays
+            )
+
             # Update non-validated fields directly
             task.note = update_task_dto.note
             task.is_important = update_task_dto.is_important
-
-            # Due date and repeat
-            repeat = Repeat.create_new(
-                frequency=num_to_frequency(update_task_dto.repeat_frequency),
-                interval=update_task_dto.repeat_interval,
-                allowed_weekdays=str_weekdays_to_set_weekdays(update_task_dto.repeat_allowed_weekdays)
-            )
-            task.change_due_date_and_repeat(update_task_dto.due_date, repeat)
 
             # Persist via repository
             task = await uow.tasks.update(task)
@@ -87,7 +79,7 @@ class TaskService:
 
             # Return TaskDTO
             return TaskDTO.from_entity(task)
-    
+
     async def delete_task(self, task_id: int) -> None:
         """Delete a task by id."""
         async with self._uow_factory as uow:
@@ -116,8 +108,10 @@ class TaskService:
             new_repeat_task = await uow.tasks.add(generated_repeat_task) if generated_repeat_task else None
 
             # Update existing task
+            # Mark task as completed
             task.is_completed = True
-            task.repeat = None
+            # Clear repeat configurations
+            task.change_due_date_and_repeat(task.due_date, None, None, None)
 
             # Persist via repository
             task = await uow.tasks.update(task)

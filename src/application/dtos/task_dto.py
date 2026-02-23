@@ -12,10 +12,9 @@ def strip_whitespace(v: str | None) -> str | None:
 
 class CreateTaskDTO(BaseModel):
     """DTO for creating a task."""
-    title: Annotated[str, BeforeValidator(strip_whitespace), Field(min_length=1)]
+    description: Annotated[str, BeforeValidator(strip_whitespace), Field(min_length=1)]
     note: str | None = None
     due_date: datetime | None = None
-    #is_completed: bool = False
     is_important: bool = False
 
     repeat_frequency: int | None = None
@@ -25,10 +24,9 @@ class CreateTaskDTO(BaseModel):
     model_config = ConfigDict(
         json_schema_extra={
             "example": {
-                "title": "Task title",
+                "description": "Task description",
                 "note": "Task note",
-                "due_date": "2025-01-01T00:00:00",
-                #"is_completed": False,
+                "due_date": "2025-01-01",
                 "is_important": True,
                 "repeat_frequency": 1,
                 "repeat_interval": 1,
@@ -39,10 +37,9 @@ class CreateTaskDTO(BaseModel):
 
 class UpdateTaskDTO(CreateTaskDTO):
     """DTO for updating a task."""
-    title: Annotated[str, BeforeValidator(strip_whitespace), Field(min_length=1)]
+    description: Annotated[str, BeforeValidator(strip_whitespace), Field(min_length=1)]
     note: str | None = None
     due_date: datetime | None = None
-    #is_completed: bool = False
     is_important: bool = False
 
     repeat_frequency: int | None = None
@@ -52,10 +49,9 @@ class UpdateTaskDTO(CreateTaskDTO):
     model_config = ConfigDict(
         json_schema_extra={
             "example": {
-                "title": "Task title",
+                "description": "Task description",
                 "note": "Task note",
-                "due_date": "2025-01-01T00:00:00",
-                #"is_completed": False,
+                "due_date": "2025-01-01",
                 "is_important": True,
                 "repeat_frequency": 1,
                 "repeat_interval": 1,
@@ -67,7 +63,7 @@ class UpdateTaskDTO(CreateTaskDTO):
 class TaskDTO(BaseModel):
     """DTO for a task."""
     id: int
-    title: str
+    description: str
     note: str | None = None
     due_date: datetime | None = None
     is_completed: bool = False
@@ -103,27 +99,18 @@ class TaskDTO(BaseModel):
                 "Cannot create TaskDTO from non-persisted task entity: missing updated_at."
                 "Ensure task entity has been saved via repository before converting to TaskDTO."
             )
-        
-        if task.repeat:
-            repeat_frequency = task.repeat.frequency.value
-            repeat_interval = task.repeat.interval
-            repeat_allowed_weekdays = set_weekdays_to_str_weekdays(task.repeat.allowed_weekdays)
-        else:
-            repeat_frequency = None
-            repeat_interval = None
-            repeat_allowed_weekdays = None
 
         return cls(
             id=task.id,
-            title=task.title,
+            description=task.description,
             note=task.note,
             due_date=task.due_date,
             is_completed=task.is_completed,
             is_important=task.is_important,
 
-            repeat_frequency=repeat_frequency,
-            repeat_interval=repeat_interval,
-            repeat_allowed_weekdays=repeat_allowed_weekdays,
+            repeat_frequency=task.repeat_frequency,
+            repeat_interval=task.repeat_interval,
+            repeat_allowed_weekdays=task.repeat_allowed_weekdays,
             
             created_at=task.created_at,
             updated_at=task.updated_at

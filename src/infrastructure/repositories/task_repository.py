@@ -62,20 +62,14 @@ class TaskRepository:
             raise ValueError(f"Task with id {task.id} not found.")
 
         # Update fields from entity
-        task_model.title = task.title
+        task_model.description = task.description
         task_model.note = task.note
         task_model.due_date = task.due_date
         task_model.is_completed = task.is_completed
         task_model.is_important = task.is_important
-
-        if task.repeat:
-            task_model.repeat_frequency = task.repeat.frequency.value
-            task_model.repeat_interval = task.repeat.interval
-            task_model.repeat_allowed_weekdays = set_weekdays_to_str_weekdays(task.repeat.allowed_weekdays)
-        else:
-            task_model.repeat_frequency = None
-            task_model.repeat_interval = None
-            task_model.repeat_allowed_weekdays = None
+        task_model.repeat_frequency = task.repeat_frequency
+        task_model.repeat_interval = task.repeat_interval
+        task_model.repeat_allowed_weekdays = task.repeat_allowed_weekdays
 
         # Manually update updated_at
         task_model.updated_at = datetime.now()
