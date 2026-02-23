@@ -54,10 +54,10 @@ class Repeat:
                             f"Allowed weekdays must be string of integers from 0 to 6."
                         )
 
-            self.__allowed_weekdays_set = set(map(int, allowed_weekdays))
-            self.allowed_weekdays = "".join(map(str, self.__allowed_weekdays_set))
+            self._allowed_weekdays_set = set(map(int, allowed_weekdays))
+            self.allowed_weekdays = "".join(map(str, self._allowed_weekdays_set))
         else:
-            self.__allowed_weekdays_set = None
+            self._allowed_weekdays_set = None
             self.allowed_weekdays = None
 
     def get_next_date(self, reference_date: datetime) -> datetime:
@@ -66,7 +66,7 @@ class Repeat:
             dtstart=reference_date,
             freq=self.frequency,
             interval=self.interval,
-            byweekday=self.__allowed_weekdays_set,
+            byweekday=self._allowed_weekdays_set,
             wkst=START_WEEKDAY
         )
         return weekly_repeat_rrule.after(reference_date)
@@ -97,7 +97,7 @@ class Repeat:
                 elif self.allowed_weekdays == WEEKEND_WEEKDAYS:
                     weekdays_description = "weekends"
                 else:
-                    weekdays_description = ", ".join(calendar.day_abbr[n] for n in self.__allowed_weekdays_set)
+                    weekdays_description = ", ".join(calendar.day_abbr[n] for n in self._allowed_weekdays_set)
 
                 return f"{frequency_description} on {weekdays_description}"
 
@@ -129,8 +129,8 @@ class Task:
             description: str,
             note: str | None = None,
             due_date: datetime | None = None,
-            is_important: bool = False,
             is_completed: bool = False,
+            is_important: bool = False,
 
             repeat_frequency: int | None = None,
             repeat_interval: int | None = None,
@@ -147,8 +147,8 @@ class Task:
         self.description = description
         self.note = note
         self.due_date = due_date
-        self.is_important = is_important
         self.is_completed = is_completed
+        self.is_important = is_important
 
         self.__repeat = Repeat.create_repeat(
             frequency=repeat_frequency,
@@ -191,7 +191,7 @@ class Task:
             else:
                 if (
                     new_repeat.frequency == RepeatFrequency.WEEKLY
-                    and new_due_date.weekday() not in new_repeat.allowed_weekdays
+                    and new_due_date.weekday() not in new_repeat._allowed_weekdays_set
                 ):
                     raise BusinessRuleViolationException(
                         "Due date must be on one of the allowed weekdays for weekly repeats."
