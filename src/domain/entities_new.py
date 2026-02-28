@@ -1,16 +1,11 @@
-from typing import Set
-from dataclasses import dataclass, field
 from enum import IntEnum
+from typing import Set, Generator
 from datetime import datetime
 import calendar
 
 from dateutil.rrule import rrule
 
 from domain.constants import START_WEEKDAY, WEEKDAY_WEEKDAYS, WEEKEND_WEEKDAYS
-from domain.exceptions import (
-    InvalidEntityStateException,
-    BusinessRuleViolationException
-)
 
 class Frequency(IntEnum):
     YEARLY = 0
@@ -18,25 +13,49 @@ class Frequency(IntEnum):
     WEEKLY = 2
     DAILY = 3
 
-class Repeat:
-    def __init__(self, frequency: Frequency, interval: int):
-        if frequency is None:
-            raise InvalidEntityStateException(
-                "Frequency cannot be empty. Repeat must have a frequency."
-            )
+class Weekdays:
+    def __init__(self, weekdays: Set[int]):
+        if weekdays is None or len(weekdays) == 0:
+            raise ValueError("Weekdays cannot be empty.")
 
-        if interval is None:
-            raise InvalidEntityStateException(
-                "Interval cannot be empty. Repeat must have an interval."
-            )
+        for weekday in weekdays:
+            if weekday < 0 or weekday > 6:
+                raise ValueError("Weekdays must be integers from 0 (Monday) to 6 (Sunday).")
 
-        if interval < 1:
-            raise InvalidEntityStateException(
-                f"Invalid interval: {interval}. Interval must be a positive integer."
-            )
+        self.__weekdays = weekdays
 
+    def is_weekdays(self) -> bool:
+        """Check if the weekdays are weekdays (Monday to Friday)."""
+        return self.__weekdays == WEEKDAY_WEEKDAYS
+
+    def is_weekends(self) -> bool:
+        """Check if the weekdays are weekends (Saturday and Sunday)."""
+        return self.__weekdays == WEEKEND_WEEKDAYS
+
+    def to_string(self) -> str:
+        """Get a string representation of the weekdays."""
+        return "".join(map(str, self.__weekdays))
+
+    @classmethod
+    def from_string(cls, weekdays_str: str) -> Weekdays:
+        """Initialize a Weekdays object from a string of integers."""
+        return cls(weekdays=set(map(int, weekdays_str)))
+
+    def __iter__(self) -> Generator[int]:
+        return iter(self.__weekdays)
+
+    def __contains__(self, value: int) -> bool:
+        return value in self.__weekdays
+
+    def __str__(self):
+        return ", ".join(calendar.day_abbr[weekday] for weekday in self.__weekdays)
+
+class BaseRepeat:
+    def __init__(self, frequency: Frequency, interval: int, weekdays_str: str | None = None):
         self.frequency = frequency
         self.interval = interval
+        self.weekdays = Weekdays.from_string(weekdays_str) if weekdays_str is not None else None
+        self.weekdays_str = self.weekdays.to_string() if self.weekdays is not None else None
 
     def get_next_date(self, reference_date: datetime) -> datetime:
         """Get next date."""
@@ -45,98 +64,99 @@ class Repeat:
             freq=self.frequency,
             interval=self.interval,
             wkst=START_WEEKDAY,
+            byweekday=self.weekdays
         )
         return repeat_rrule.after(reference_date)
 
+class NoRepeat(BaseRepeat):
+    def __init__(self):
+        super().__init__(frequency=None, interval=None, weekdays_str=None)
+
+    def get_next_date(self, reference_date: datetime) -> None:
+        """Return none."""
+        return None
+
+class Repeat(BaseRepeat):
+    def __init__(self, frequency: int, interval: int, weekdays_str: str | None = None):
+        if interval is None:
+            raise ValueError("Interval cannot be empty.")
+        if interval < 1:
+            raise ValueError("Interval must be a positive integer.")
+
+        super().__init__(frequency=frequency, interval=interval, weekdays_str=weekdays_str)
+
 class YearlyRepeat(Repeat):
     def __init__(self, interval: int):
-        super().__init__(Frequency.YEARLY, interval)
+        super().__init__(frequency=Frequency.YEARLY, interval=interval, weekdays_str=None)
 
     def __str__(self):
-        if self.interval == 1:
-            return "Repeat yearly"
-        return f"Repeat every {self.interval} years"
+        return "Repeat yearly" if self.interval == 1 else f"Repeat every {self.interval} years"
 
 class MonthlyRepeat(Repeat):
     def __init__(self, interval: int):
-        super().__init__(Frequency.MONTHLY, interval)
+        super().__init__(frequency=Frequency.MONTHLY, interval=interval, weekdays_str=None)
+
+    def __str__(self):
+        return "Repeat monthly" if self.interval == 1 else f"Repeat every {self.interval} months"
+
+class WeeklyRepeat(Repeat):
+    def __init__(self, interval: int, weekdays_str: str):
+        if weekdays_str is None:
+            raise ValueError("Weekdays cannot be empty.")
+
+        super().__init__(frequency=Frequency.WEEKLY, interval=interval, weekdays_str=weekdays_str)
 
     def __str__(self):
         if self.interval == 1:
-            return "Repeat monthly"
-        return f"Repeat every {self.interval} months"
+            repeat_description = "Repeat weekly"
+        else:
+            repeat_description = f"Repeat every {self.interval} weeks"
 
-class WeeklyRepeat(Repeat):
-    def __init__(self, interval: int, allowed_weekdays: Set[int] | str):
-        super().__init__(Frequency.WEEKLY, interval)
-        if allowed_weekdays is None or len(allowed_weekdays) == 0:
-            raise InvalidEntityStateException(
-                "Allowed weekdays cannot be empty. Repeat must have allowed weekdays."
-            )
-
-        for weekday in allowed_weekdays:
-            if weekday not in "0123456":
-                raise InvalidEntityStateException(
-                    f"Invalid allowed weekdays: {allowed_weekdays}. Allowed weekdays must be string of integers from 0 (Monday) to 6 (Sunday)."
-                )
-
-        # Get a set of allowed weekdays from string
-        self.allowed_weekdays_set = set(map(int, allowed_weekdays))
-        # Get a clean string of allowed weekdays from set
-        self.allowed_weekdays = "".join(map(str, self.allowed_weekdays_set))
-
-    def __str__(self):
-        repeat_description = "Repeat weekly" if self.interval == 1 else f"Repeat every {self.interval} weeks"
-
-        if self.allowed_weekdays == WEEKDAY_WEEKDAYS:
+        if self.weekdays.is_weekdays():
             weekdays_description = "weekdays"
-        elif self.allowed_weekdays == WEEKEND_WEEKDAYS:
+        elif self.weekdays.is_weekends():
             weekdays_description = "weekends"
         else:
-            weekdays_description = ", ".join(calendar.day_abbr[weekday] for weekday in self.allowed_weekdays_set)
+            weekdays_description = str(self.weekdays)
 
         return f"{repeat_description} on {weekdays_description}"
 
-    def get_next_date(self, reference_date: datetime) -> datetime:
-        """Get next date."""
-        weekly_repeat_rrule = rrule(
-            dtstart=reference_date,
-            freq=self.frequency,
-            interval=self.interval,
-            wkst=START_WEEKDAY,
-            byweekday=self.allowed_weekdays_set
-        )
-        return weekly_repeat_rrule.after(reference_date)
-
 class DailyRepeat(Repeat):
     def __init__(self, interval: int):
-        super().__init__(Frequency.DAILY, interval)
+        super().__init__(frequency=Frequency.DAILY, interval=interval, weekdays_str=None)
 
     def __str__(self):
-        if self.interval == 1:
-            return "Repeat daily"
-        return f"Repeat every {self.interval} days"
+        return "Repeat daily" if self.interval == 1 else f"Repeat every {self.interval} days"
 
-class RepeatFactory:
-    @staticmethod
-    def create_repeat(
-        frequency: Frequency | None = None,
-        interval: int | None = None,
-        allowed_weekdays: Set[int] | str | None = None
-    ) -> Repeat | None:
-        """Create repeat based on configurations."""
-        # No repeat
-        if frequency is None and interval is None and allowed_weekdays is None:
-            return None
+class RepeatManager:
+    def __init__(self, due_date: datetime, frequency: int, interval: int, weekdays_str: str | None = None):
+        if frequency is None:
+            repeat = NoRepeat()
+        else:
+            if due_date is None:
+                raise ValueError("Due date cannot be empty for repeats.") 
 
-        match frequency:
-            case Frequency.YEARLY:
-                return YearlyRepeat(interval=interval)
-            case Frequency.MONTHLY:
-                return MonthlyRepeat(interval=interval)
-            case Frequency.WEEKLY:
-                return WeeklyRepeat(interval=interval, allowed_weekdays=allowed_weekdays)
-            case Frequency.DAILY:
-                return DailyRepeat(interval=interval)
-            case _:
-                raise InvalidEntityStateException(f"Frequency must be from 0 (Yearly) to 3 (Daily).")
+            match frequency:
+                case Frequency.YEARLY:
+                    repeat = YearlyRepeat(interval=interval)
+                case Frequency.MONTHLY:
+                    repeat = MonthlyRepeat(interval=interval)
+                case Frequency.WEEKLY:
+                    repeat = WeeklyRepeat(interval=interval, weekdays_str=weekdays_str)
+
+                    if due_date.weekday() not in repeat.weekdays:
+                        raise ValueError("Due date must be on one of the weekdays.")
+                case Frequency.DAILY:
+                    repeat = DailyRepeat(interval=interval)
+                case _:
+                    raise ValueError(f"Frequency must be integer from 0 (Yearly) to 3 (Daily).")
+
+        self.repeat = repeat
+        self.due_date = due_date
+
+    def get_next_due_date(self) -> datetime | None:
+        """Get next due date."""
+        return self.repeat.get_next_date(self.due_date)
+
+    def __str__(self) -> str:
+        return f"{self.repeat} starting on {self.due_date.strftime('%Y-%m-%d %H:%M:%S')}"
