@@ -75,6 +75,9 @@ class NoRepeat(BaseRepeat):
     def get_next_date(self, reference_date: datetime) -> None:
         """Return none."""
         return None
+    
+    def __str__(self):
+        return "No repeat"
 
 class Repeat(BaseRepeat):
     def __init__(self, frequency: int, interval: int, weekdays_str: str | None = None):
@@ -159,4 +162,75 @@ class RepeatManager:
         return self.repeat.get_next_date(self.due_date)
 
     def __str__(self) -> str:
-        return f"{self.repeat} starting on {self.due_date.strftime('%Y-%m-%d %H:%M:%S')}"
+        repeat_description = str(self.repeat)
+        due_date_description = f"due on {self.due_date.strftime('%Y-%m-%d %H:%M:%S')}" if self.due_date else ""
+        return " | ".join((repeat_description, due_date_description))
+
+class Task:
+    def __init__(
+        self,
+        description: str,
+        note: str | None = None,
+        due_date: datetime | None = None,
+        is_completed: bool = False,
+        is_important: bool = False,
+        repeat_frequency: int | None = None,
+        repeat_interval: int | None = None,
+        repeat_weekdays: str | None = None,
+        id: int | None = None,
+        created_at: datetime | None = None,
+        updated_at: datetime | None = None
+    ) -> None:
+        if description is None or len(description.strip()) == 0:
+            raise ValueError("Description cannot be empty.")
+
+        self.description = description
+        self.note = note
+        self.due_date = due_date
+        self.is_completed = is_completed
+        self.is_important = is_important
+
+        self.repeat = RepeatManager(due_date, repeat_frequency, repeat_interval, repeat_weekdays)
+
+        self.id = id
+        self.created_at = created_at
+        self.updated_at = updated_at
+
+    def change_description(self, description: str) -> None:
+        if description is None or len(description.strip()) == 0:
+            raise ValueError("Description cannot be empty.")
+
+        self.description = description
+
+    def change_repeat_management(self,
+        due_date: datetime | None,
+        frequency: int | None,
+        interval: int | None,
+        weekdays_str: str | None
+    ) -> None:
+        self.repeat = RepeatManager(
+            due_date=due_date,
+            frequency=frequency,
+            interval=interval,
+            weekdays_str=weekdays_str
+        )
+
+    def create_new_repeating_task(self) -> Task | None:
+        if isinstance(self.repeat.repeat, NoRepeat):
+            return None
+        return Task(
+            description=self.description,
+            note=self.note,
+            due_date=self.repeat.get_next_due_date(),
+            is_completed=self.is_completed,
+            is_important=self.is_important,
+            repeat_frequency=self.repeat.repeat.frequency,
+            repeat_interval=self.repeat.repeat.interval,
+            repeat_weekdays=self.repeat.repeat.weekdays_str,
+            id=self.id,
+            created_at=self.created_at,
+            updated_at=self.updated_at
+        )
+
+    def __str__(self) -> str:
+        return f"{self.description} | {self.repeat}"
