@@ -64,9 +64,6 @@ class Task:
             repeat_frequency=self.repeat_manager.repeat.frequency,
             repeat_interval=self.repeat_manager.repeat.interval,
             repeat_weekdays=self.repeat_manager.repeat.weekdays_str,
-            id=self.id,
-            created_at=self.created_at,
-            updated_at=self.updated_at
         )
 
     def __str__(self) -> str:
