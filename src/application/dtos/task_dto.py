@@ -4,7 +4,6 @@ from typing import Annotated
 from pydantic import BaseModel, BeforeValidator, ConfigDict, Field
 
 from domain.entities import Task
-from domain.utils import set_weekdays_to_str_weekdays
 
 def strip_whitespace(v: str | None) -> str | None:
     """Strip whitespace from string values."""
@@ -13,24 +12,19 @@ def strip_whitespace(v: str | None) -> str | None:
 class CreateTaskDTO(BaseModel):
     """DTO for creating a task."""
     description: Annotated[str, BeforeValidator(strip_whitespace), Field(min_length=1)]
-    note: str | None = None
     due_date: datetime | None = None
-    is_important: bool = False
-
     repeat_frequency: int | None = None
     repeat_interval: int | None = None
-    repeat_allowed_weekdays: str | None = None
+    repeat_weekdays: str | None = None
 
     model_config = ConfigDict(
         json_schema_extra={
             "example": {
-                "description": "Task description",
-                "note": "Task note",
-                "due_date": "2025-01-01",
-                "is_important": True,
-                "repeat_frequency": 1,
-                "repeat_interval": 1,
-                "repeat_allowed_weekdays": "12345"
+                "description": "Finish Anki decks",
+                "due_date": "2026-01-01",
+                "repeat_frequency": 3, # Daily
+                "repeat_interval": 1, # Every day
+                "repeat_weekdays": None
             }
         }
     )
@@ -41,21 +35,20 @@ class UpdateTaskDTO(CreateTaskDTO):
     note: str | None = None
     due_date: datetime | None = None
     is_important: bool = False
-
     repeat_frequency: int | None = None
     repeat_interval: int | None = None
-    repeat_allowed_weekdays: str | None = None
+    repeat_weekdays: str | None = None
 
     model_config = ConfigDict(
         json_schema_extra={
             "example": {
-                "description": "Task description",
-                "note": "Task note",
-                "due_date": "2025-01-01",
+                "description": "Finish Anki decks",
+                "note": "Open AnkiDroid app to start",
+                "due_date": "2026-01-01",
                 "is_important": True,
-                "repeat_frequency": 1,
-                "repeat_interval": 1,
-                "repeat_allowed_weekdays": "12345"
+                "repeat_frequency": 2, # Weekly
+                "repeat_interval": 1, # Every week
+                "repeat_weekdays": "01234" # Monday to Friday
             }
         }
     )
@@ -68,11 +61,9 @@ class TaskDTO(BaseModel):
     due_date: datetime | None = None
     is_completed: bool = False
     is_important: bool = False
-
     repeat_frequency: int | None = None
     repeat_interval: int | None = None
-    repeat_allowed_weekdays: str | None = None
-
+    repeat_weekdays: str | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -104,14 +95,12 @@ class TaskDTO(BaseModel):
             id=task.id,
             description=task.description,
             note=task.note,
-            due_date=task.due_date,
+            due_date=task.repeat_manager.due_date,
             is_completed=task.is_completed,
             is_important=task.is_important,
-
-            repeat_frequency=task.repeat_frequency,
-            repeat_interval=task.repeat_interval,
-            repeat_allowed_weekdays=task.repeat_allowed_weekdays,
-            
+            repeat_frequency=task.repeat_manager.repeat.frequency,
+            repeat_interval=task.repeat_manager.repeat.interval,
+            repeat_weekdays=task.repeat_manager.repeat.weekdays_str,
             created_at=task.created_at,
             updated_at=task.updated_at
         )
