@@ -7,22 +7,20 @@ from domain.entities import Task
 class TaskService:
     def __init__(self, uow_factory) -> None:
         self._uow_factory = uow_factory
-    
+
     async def create_task(self, create_task_dto: CreateTaskDTO) -> TaskDTO:
         """Create a new task."""
         async with self._uow_factory as uow:
             # Create domain entity
             task = Task(
                 description=create_task_dto.description,
-                note=create_task_dto.note,
                 due_date=create_task_dto.due_date,
-                is_important=create_task_dto.is_important,
                 repeat_frequency=create_task_dto.repeat_frequency,
                 repeat_interval=create_task_dto.repeat_interval,
-                repeat_allowed_weekdays=create_task_dto.repeat_allowed_weekdays
+                repeat_weekdays=create_task_dto.repeat_weekdays
             )
 
-            # Persist via repository
+            # Persist new task
             task = await uow.tasks.add(task)
 
             # Commit transaction
@@ -35,43 +33,41 @@ class TaskService:
         """Get a task by id."""
         async with self._uow_factory as uow:
             task = await uow.tasks.get_by_id(task_id)
-            
+
             if task is None:
                 raise ValueError(f"Task with id {task_id} not found.")
 
             return TaskDTO.from_entity(task)
-    
+
     async def get_all_tasks(self, skip: int = 0, limit: int = 100) -> List[TaskDTO]:
         """Get all tasks with pagination."""
         async with self._uow_factory as uow:
             tasks = await uow.tasks.get_all(skip=skip, limit=limit)
             return [TaskDTO.from_entity(task) for task in tasks]
-    
+
     async def update_task(self, task_id: int, update_task_dto: UpdateTaskDTO) -> TaskDTO:
         """Update a task."""
         async with self._uow_factory as uow:
             # Get existing task
             task = await uow.tasks.get_by_id(task_id)
-            
+    
             if task is None:
                 raise ValueError(f"Task with id {task_id} not found.")
 
             # Update validated fields by method
-            if update_task_dto.description:
-                task.change_description(update_task_dto.description)
-
-            task.change_due_date_and_repeat(
+            task.change_description(update_task_dto.description)
+            task.change_repeat_manager(
                 update_task_dto.due_date,
                 update_task_dto.repeat_frequency,
                 update_task_dto.repeat_interval,
-                update_task_dto.repeat_allowed_weekdays
+                update_task_dto.repeat_weekdays
             )
 
             # Update non-validated fields directly
             task.note = update_task_dto.note
             task.is_important = update_task_dto.is_important
 
-            # Persist via repository
+            # Persist updated task
             task = await uow.tasks.update(task)
 
             # Commit transaction
@@ -94,55 +90,46 @@ class TaskService:
         """Complete a task by id."""
         async with self._uow_factory as uow:
             task = await uow.tasks.get_by_id(task_id)
-            
+
             if task is None:
                 raise ValueError(f"Task with id {task_id} not found.")
 
             if task.is_completed:
                 raise ValueError(f"Task with id {task_id} is already completed.")
-            
-            # Create new repeat task if repeating
-            generated_repeat_task = task.create_new_repeating_task()
 
-            # Persist via repository
-            new_repeat_task = await uow.tasks.add(generated_repeat_task) if generated_repeat_task else None
+            # Create new repeating task
+            created_new_repeating_task = task.create_new_repeating_task()
+            # Persist new repeating task if created
+            new_repeating_task = await uow.tasks.add(created_new_repeating_task) if created_new_repeating_task else None
 
-            # Update existing task
             # Mark task as completed
             task.is_completed = True
-            # Clear repeat configurations
-            task.change_due_date_and_repeat(task.due_date, None, None, None)
+            # Set task repeat as no repeat
+            task.change_repeat_manager(task.repeat_manager.due_date, None, None, None)
 
-            # Persist via repository
+            # Persist updated task
             task = await uow.tasks.update(task)
 
             # Commit transaction
             await uow.commit()
 
-            """
-            return (
-                TaskDTO.from_entity(task),
-                TaskDTO.from_entity(new_repeat_task) if new_repeat_task else None
-            )
-            """
-
-            return task, new_repeat_task
-                
+            return task, new_repeating_task
 
     async def uncomplete_task(self, task_id: int) -> TaskDTO:
         """Uncomplete a task by id."""
         async with self._uow_factory as uow:
             task = await uow.tasks.get_by_id(task_id)
-            
+
             if task is None:
                 raise ValueError(f"Task with id {task_id} not found.")
 
             if not task.is_completed:
                 raise ValueError(f"Task with id {task_id} is not completed.")
-            
+
+            # Mark task as not completed
             task.is_completed = False
 
-            # Persist via repository
+            # Persist updated task
             task = await uow.tasks.update(task)
 
             # Commit transaction
